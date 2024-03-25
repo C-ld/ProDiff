@@ -1,0 +1,56 @@
+base_config:
+  - egs/egs_bases/config_base.yaml
+  # - egs/egs_bases/tts/fs2.yaml
+
+task_cls: modules.nowcastNet.task.Nowcast_task.NowcastTask
+
+# dataset
+input_data_type:  'float32'
+output_data_type: 'float32'
+img_width:        512
+img_height:       512
+input_length:     9
+total_length:     29
+data_path:        'data/dataset/mrms/figure'
+type:             'test'
+sort_by_len:      false
+
+# optimizer
+lr:               0.001
+scheduler:        none # rsqrt|none
+warmup_updates:   8000
+optimizer_adam_beta1: 0.9
+optimizer_adam_beta2: 0.98
+weight_decay:     0
+clip_grad_norm:   1
+clip_grad_value:  0
+
+# train
+batch_size:       4
+max_updates:      200
+ngf:              32
+gen_oc:           20
+hidden_size:      256
+
+# eval
+# use_gt_dur:       false
+# use_gt_f0:        false
+# gen_tgt_spk_id:   -1
+# num_sanity_val_steps: -1
+# num_valid_plots:  10
+# use_cond_disc:    true
+# save_gt:          true
+# num_test_samples: 20
+# max_valid_sentences: 1
+# text: the invention of movable metal letters in the middle of the fifteenth century may justly be considered as the invention of the art of printing.
+
+
+# variation
+# pitch_type: frame
+# pitch_extractor: 'parselmouth'
+# use_pitch_embed: true
+# use_energy_embed: true
+# mel_loss: "ssim:0.5|l1:0.5"
+
+
+
