@@ -2,6 +2,8 @@ from utils.hparams import hparams
 
 
 class RSQRTSchedule(object):
+    #schedule the learning rate
+
     def __init__(self, optimizer):
         super().__init__()
         self.optimizer = optimizer

@@ -49,6 +49,8 @@ def data_loader(fn):
     Decorator to make any fx with this use the lazy property
     :param fn:
     :return:
+    作用主要是为了优化数据加载器的调用，保证加载器只被调用一次并将结果储存，
+    后续的调用直接返回储存的结果。
     """
 
     wraps(fn)
