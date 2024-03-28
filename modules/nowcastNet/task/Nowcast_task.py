@@ -45,39 +45,35 @@ class NowcastTask(BaseTask):
 
     @data_loader
     def train_dataloader(self):
-        train_dataset = self.dataset_cls(shuffle=False)
-        return self.build_dataloader(train_dataset)
-        # train_dataset = self.dataset_cls(shuffle=True)
-        # return self.build_dataloader(train_dataset, True, self.max_sentences, hparams['endless_ds'])
-
+        train_dataset = self.dataset_cls(shuffle=True)
+        return self.build_dataloader(train_dataset, shuffle=True)
 
     @data_loader
     def val_dataloader(self):
-        # raise NotImplementedError
         train_dataset = self.dataset_cls(shuffle=False)
         return self.build_dataloader(train_dataset)
 
     @data_loader
     def test_dataloader(self):
-        raise NotImplementedError
-        # test_dataset = self.dataset_cls(prefix=hparams['test_set_name'], shuffle=False)
-        # self.test_dl = self.build_dataloader(
-        #     test_dataset, False, self.max_valid_tokens,
-        #     self.max_valid_sentences, batch_by_size=False)
-        # return self.test_dl
+        train_dataset = self.dataset_cls(shuffle=False)
+        return self.build_dataloader(train_dataset, batch_by_size=False)
 
-    def build_dataloader(self, dataset, shuffle=False, required_batch_size_multiple=-1):
-        devices_cnt = torch.cuda.device_count()
-        if devices_cnt == 0:
-            devices_cnt = 1
-        if required_batch_size_multiple == -1:
-            required_batch_size_multiple = devices_cnt
-
+    def build_dataloader(self, dataset, shuffle=False, batch_by_size=True):
         indices = dataset.ordered_indices()
 
         batch_sampler = []
-        for i in range(0, len(indices)):
-            batch_sampler.append(indices[i])
+        if batch_by_size:
+            mini_batch = []
+            for i in range(0, len(indices)):
+                mini_batch.append(indices[i])
+                if len(mini_batch) == hparams['batch_size']:
+                    batch_sampler.append(mini_batch.copy())
+                    mini_batch.clear()
+            if len(mini_batch) > 0:
+                batch_sampler.append(mini_batch.copy())
+        else:
+            for i in range(0, len(indices)):
+                batch_sampler.append([indices[i]])
 
         def shuffle_batches(batches):
             np.random.shuffle(batches)
@@ -90,15 +86,8 @@ class NowcastTask(BaseTask):
 
 
         num_workers = dataset.num_workers
-        if self.trainer.use_ddp:
-            num_replicas = dist.get_world_size()
-            rank = dist.get_rank()
-            batches = [x[rank::num_replicas] for x in batches if len(x) % num_replicas == 0]
-        batch_sampler = []
-        for i in range(0, len(batches)):
-            batch_sampler.append([batches[i]])
         return torch.utils.data.DataLoader(dataset,
-                                           batch_sampler=batch_sampler,
+                                           batch_sampler=batches,
                                            num_workers=num_workers)
         # return torch.utils.data.DataLoader(dataset,
         #                                    batch_size=4,
@@ -141,34 +130,101 @@ class NowcastTask(BaseTask):
         :param batch_idx:
         :return: total loss: torch.Tensor, loss_log: dict
         """
-        # print(sample)
-        # raise NotImplementedError
-        # TODO:ld implement the train_step
+        # sample {'input_frames': (b, 9, h, w), 'gt_frames': (b, 20, h, w)}
         loss_output = self.run_model(self.model, sample)
         total_loss = sum([v for v in loss_output.values() if isinstance(v, torch.Tensor) and v.requires_grad])
-        loss_output['batch_size'] = sample['txt_tokens'].size()[0]
         return total_loss, loss_output
-
-
 
     def run_model(self, model, sample, return_output=False):
         
-        input_frames = sample
+        input_frames = sample['input_frames'].float()
         output = model(input_frames)
         losses = {}
-        losses['mse'] = self.mse_loss(output, sample)
-        # self.add_mel_loss(output['mel_out'], target, losses)
-        # self.add_dur_loss(output['dur'], mel2ph, txt_tokens, losses=losses)
+
+        gt = sample['gt_frames'].float()[..., :1]
+        losses['mse'] = self.mse_loss(output, gt)
         if not return_output:
             return losses
         else:
             return losses, output
 
     def mse_loss(self, output, target):
-        # decoder_output : B x T x n_mel
-        # target : B x T x n_mel
         assert output.shape == target.shape
-        mse_loss = F.mse_loss(output, target, reduction='none')
-        # weights = self.weights_nonzero_speech(target)
-        # mse_loss = (mse_loss * weights).sum() / weights.sum()
+        mse_loss = F.mse_loss(output, target)
         return mse_loss
+
+    def on_train_end(self):
+        self.trainer.save_checkpoint(epoch=self.current_epoch)
+
+    ######################
+    # testing
+    ######################
+
+    def test_start(self):
+        self.gen_dir = os.path.join(hparams['work_dir'],
+                                    f'generated_{self.trainer.global_step}_{hparams["gen_dir_name"]}')
+        os.makedirs(self.gen_dir, exist_ok=True)
+
+
+    ######################
+    # validation
+    ######################
+
+    def validation_step(self, sample, batch_idx):
+        """
+
+        :param sample:
+        :param batch_idx:
+        :return: output: {"losses": {...}, "total_loss": float, ...} or (total loss: torch.Tensor, loss_log: dict)
+        """
+        # raise NotImplementedError
+        outputs = {}
+        losses, output = self.run_model(self.model, sample, return_output=True)
+        output = output.detach().cpu().numpy()
+        gt = torch.cat((sample['input_frames'], sample['gt_frames']), dim=1).detach().cpu().numpy()
+        res_path = self.gen_dir
+
+        def save_plots(field, labels, res_path, figsize=None,
+                       vmin=0, vmax=10, cmap="viridis", npy=False, **imshow_args):
+
+            for i, data in enumerate(field):
+                #data(h,w,2),h=384,w=384 for normal;
+                fig = plt.figure(figsize=figsize)
+                ax = plt.axes()
+                ax.set_axis_off()
+                alpha = data[..., 0] / 1
+                alpha[alpha < 1] = 0
+                alpha[alpha > 1] = 1
+
+                img = ax.imshow(data[..., 0], alpha=alpha, vmin=vmin, vmax=vmax, cmap=cmap, **imshow_args)
+                plt.savefig('{}/{}.png'.format(res_path, labels[i]))
+                plt.close()  
+                if npy:
+                    with open( '{}/{}.npy'.format(res_path, labels[i]), 'wb') as f:
+                        np.save(f, data[..., 0])
+
+
+        data_vis_dict = {
+            'radar': {'vmin': 1, 'vmax': 40},
+        }
+        vis_info = data_vis_dict['radar']
+
+        if batch_idx <= hparams['num_save_samples']:
+            path = os.path.join(res_path, str(batch_idx))
+            os.makedirs(path, exist_ok=True)
+            if hparams['case_type'] == 'normal':
+                test_ims_plot = gt[0][:-2, 256-192:256+192, 256-192:256+192]
+                img_gen_plot = output[0][:-2, 256-192:256+192, 256-192:256+192]
+            else:
+                test_ims_plot = gt[0][:-2]
+                img_gen_plot = output[0][:-2]
+            save_plots(test_ims_plot,
+                       labels=['gt{}'.format(i + 1) for i in range(hparams['total_length'])],
+                       res_path=path, vmin=vis_info['vmin'], vmax=vis_info['vmax'])
+            save_plots(img_gen_plot,
+                       labels=['pd{}'.format(i + 1) for i in range(9, hparams['total_length'])],
+                       res_path=path, vmin=vis_info['vmin'], vmax=vis_info['vmax'])
+        outputs['losses'] = losses
+        outputs['total_loss'] = sum(outputs['losses'].values())
+        outputs = utils.tensors_to_scalars(outputs)
+        return outputs

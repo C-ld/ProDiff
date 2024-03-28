@@ -265,7 +265,7 @@ class BaseTask(nn.Module):
         """
         all_losses_meter = {'total_loss': utils.AvgrageMeter()}
         for output in outputs:
-            if len(output) == 0 or output is None:
+            if output is None or len(output) == 0:
                 continue
             if isinstance(output, dict):
                 assert 'losses' in output, 'Key "losses" should exist in validation output.'

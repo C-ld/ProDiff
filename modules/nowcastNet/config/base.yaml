@@ -14,6 +14,7 @@ total_length:     29
 data_path:        'data/dataset/mrms/figure'
 type:             'test'
 sort_by_len:      false
+case_type:        'normal' # 'large'
 
 # optimizer
 lr:               0.001
@@ -27,12 +28,15 @@ clip_grad_value:  0
 
 # train
 batch_size:       4
-max_updates:      200
+max_updates:      20
 ngf:              32
 gen_oc:           20
 hidden_size:      256
 
 # eval
+gen_dir_name:     'results'
+num_save_samples: 10
+
 # use_gt_dur:       false
 # use_gt_f0:        false
 # gen_tgt_spk_id:   -1

@@ -49,25 +49,21 @@ class NowcastDataset(BaseDataset):
         data = self.load(index)[-self.length:].copy()
         #data(29,h,w)
 
-        # mask = np.ones_like(data)
+        mask = np.ones_like(data)
         # # 复制全1矩阵mask
-        # mask[data < 0] = 0
+        mask[data < 0] = 0
         data[data < 0] = 0
         # 数据和mask负数位都置0
         data = np.clip(data, 0, 128)
         # gt的所有>128的位置都置为128, <0的置为0
-
-        # vid = np.zeros((self.length, self.img_height, self.img_width, 2)) 
-        #vid(29,h,w,2)
-        # vid[..., 0] = data
-        # vid[..., 1] = mask
-
-        batch = data[:self.input_length]
-        label = data[self.input_length:]
-
-        # img = dict()
-        # img['radar_frames'] = torch.Tensor(data)
-        return batch, label
+        vid = np.zeros((self.length, self.img_height, self.img_width, 2))
+        vid[..., 0] = data
+        vid[..., 1] = mask
+        img = dict()
+        
+        img['input_frames'] = vid[:self.input_length]
+        img['gt_frames'] = vid[self.input_length:]
+        return img
 
     def __len__(self):
         return len(self.case_list) # num_of_cases

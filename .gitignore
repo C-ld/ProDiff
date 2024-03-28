@@ -1,11 +1,13 @@
 ### Project ignore
-
+/data
+/checkpoints
 /ParallelWaveGAN
 /wavegan_pretrained*
 /pretrained_models
 rsync
 .idea
 .DS_Store
+.vscode
 bak
 tmp
 *.tar.gz
