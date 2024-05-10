@@ -1,5 +1,4 @@
 ### Project ignore
-/data
 /checkpoints
 /ParallelWaveGAN
 /wavegan_pretrained*
