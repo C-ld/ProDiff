@@ -8,7 +8,7 @@ import torch.utils.data
 import torch.distributions
 
 class NowcastDataset(BaseDataset):
-    def __init__(self, shuffle=False):
+    def __init__(self, shuffle=False, mode="test"):
         super().__init__(shuffle)
         self.hparams = hparams
         # Maybe no need 
@@ -18,28 +18,104 @@ class NowcastDataset(BaseDataset):
         self.img_height = hparams['img_height']
         self.input_length = hparams['input_length']
         self.length = hparams['total_length'] #29
-        self.data_path = hparams['data_path'] #/data/dataset/mrms/figure
+        self.data_path = hparams['data_path'] #target dataset path like: /data/dataset/mrms/figure
         self.type = hparams['type'] #'test'
+        self.is_using_old = hparams['if_using_old'] #italy: false
 
         self.case_list = [] # (num_of_cases, 29, ...)
-        name_list = os.listdir(self.data_path)
-        name_list.sort()
-        for name in name_list:
-            case = []
-            for i in range(29):
-                case.append(self.data_path + '/' + name + '/' + name + '-' + str(i).zfill(2) + '.png')
-            self.case_list.append(case)
+        year_list = os.listdir(self.data_path)
+        year_list.sort()
+        #遍历数据集下目录，根据mode确定遍历范围，获取所有单个序列并加入case_list
+        if mode == "test":
+            # find the last year and get all runs
+            print("mode: ", mode)
+            last_year = year_list[-1]
+            if len(last_year) == 4:
+                ypath = self.data_path + '/' + last_year
+                day_list = os.listdir(ypath)
+                day_list.sort()
+                for day in day_list:
+                    dpath = ypath + '/' + day
+                    corp_list = os.listdir(dpath)
+                    corp_list.sort()
+                    for corp in corp_list:
+                        case = []
+                        png_list = os.listdir(dpath + '/' + corp)
+                        png_list.sort()
+                        for png in png_list:
+                            case.append(dpath + '/' + corp + '/' + png)
+                        self.case_list.append(case)
+            else:
+                print("Error: test dataset not supported")
+                raise Exception("test dataset not supported")
+            
+        elif mode == "train":
+            # get all years data except the last year
+            print("mode: ", mode)
+            years = year_list[:-1]
+            for year in years:
+                if len(year) == 4:
+                    ypath = self.data_path + '/' + year
+                    day_list = os.listdir(ypath)
+                    day_list.sort()
+                    for day in day_list:
+                        dpath = ypath + '/' + day
+                        corp_list = os.listdir(dpath)
+                        corp_list.sort()
+                        for corp in corp_list:
+                            case = []
+                            png_list = os.listdir(dpath + '/' + corp)
+                            png_list.sort()
+                            for png in png_list:
+                                case.append(dpath + '/' + corp + '/' + png)
+                            self.case_list.append(case)
+                else:
+                    print("Error: train dataset not supported")
+                    raise Exception("train dataset not supported")
+                
+        elif mode == "valid":
+            # get all years 1st data except the last year
+            print("mode: ", mode)
+            years = year_list[:-1]
+            for year in years:
+                if len(year) == 4:
+                    ypath = self.data_path + '/' + year
+                    day_list = os.listdir(ypath)
+                    day_list.sort()
+                    for day in day_list[::30]:
+                        dpath = ypath + '/' + day
+                        corp_list = os.listdir(dpath)
+                        corp_list.sort()
+                        for corp in corp_list:
+                            case = []
+                            png_list = os.listdir(dpath + '/' + corp)
+                            png_list.sort()
+                            for png in png_list:
+                                case.append(dpath + '/' + corp + '/' + png)
+                            self.case_list.append(case)
+                else:
+                    print("Error: train dataset not supported")
+                    raise Exception("train dataset not supported")
+        print("case total: ", len(self.case_list))
+        # for name in name_list:
+        #     case = []
+        #     for i in range(29):
+        #         case.append(self.data_path + '/' + name + '/' + name + '-' + str(i).zfill(2) + '.png')
+        #     self.case_list.append(case)
 
  
     def load(self, index):
         #获取第 index 个 case 的图片流
         data = []
+        # print(self.case_list[index][0])
         for img_path in self.case_list[index]:
             img = cv2.imread(img_path, 2) 
             #以单通道灰度图的方式读取图像
             data.append(np.expand_dims(img, axis=0)) 
             #img(w,h)先扩展了一个维度变为(1,h,w),再加入data(n+1,1,h,w)
-        data = np.concatenate(data, axis=0).astype(self.input_data_type) / 10.0 - 3.0 
+        data = np.concatenate(data, axis=0).astype(self.input_data_type)
+        if self.is_using_old:
+            data = data / 10.0 - 3.0 
         #↑把29个图解包合并，把每个单位作为32位浮点数做运算,data最终变为(29,h,w)
         assert data.shape[1]<=1024 and data.shape[2]<=1024 
         #检查 h<=1024,w<=1024

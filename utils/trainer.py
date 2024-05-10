@@ -74,9 +74,18 @@ class Trainer:
         # allow int, string and gpu list
         self.all_gpu_ids = [
             int(x) for x in os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",") if x != '']
-        self.num_gpus = len(self.all_gpu_ids)
-        self.on_gpu = self.num_gpus > 0
-        self.root_gpu = 0
+        # self.num_gpus = len(self.all_gpu_ids)
+        # self.on_gpu = self.num_gpus > 0
+        # self.root_gpu = 0
+        if len(self.all_gpu_ids) == 0:
+            self.root_gpu = None
+            self.on_gpu = False
+            self.num_gpus = 0
+        else:
+            self.root_gpu = self.all_gpu_ids[0]
+            self.on_gpu = True
+            self.num_gpus = len(self.all_gpu_ids)
+
         logging.info(f'GPU available: {torch.cuda.is_available()}, GPU used: {self.all_gpu_ids}')
         self.use_ddp = self.num_gpus > 1
         self.proc_rank = 0

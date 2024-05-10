@@ -20,6 +20,26 @@ class NoneSchedule(object):
     def get_last_lr(self):
         return self.get_lr()
 
+class MySchedule(object):
+    def __init__(self, optimizer):
+        super().__init__()
+        self.optimizer = optimizer
+        self.constant_lr = hparams['lr']
+        self.step(0)
+    
+    def step(self, num_updates):
+        if num_updates > 200000:
+            self.constant_lr = 0.0001
+        self.lr = self.constant_lr
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = self.lr
+        return self.lr
+
+    def get_lr(self):
+        return self.optimizer.param_groups[0]['lr']
+
+    def get_last_lr(self):
+        return self.get_lr()
 
 class RSQRTSchedule(object):
     def __init__(self, optimizer):

@@ -5,7 +5,7 @@ from modules.nowcastNet.models.nowcastnet import NowcastNet
 
 from utils.hparams import hparams
 from utils import audio
-from utils.common_schedulers import RSQRTSchedule, NoneSchedule
+from utils.common_schedulers import RSQRTSchedule, NoneSchedule, MySchedule
 
 from tqdm import tqdm
 from modules.nowcastNet.task.dataset_utils import NowcastDataset
@@ -45,17 +45,20 @@ class NowcastTask(BaseTask):
 
     @data_loader
     def train_dataloader(self):
-        train_dataset = self.dataset_cls(shuffle=True)
+        #add mode: train
+        train_dataset = self.dataset_cls(shuffle=True, mode="train")
         return self.build_dataloader(train_dataset, shuffle=True)
 
     @data_loader
     def val_dataloader(self):
-        train_dataset = self.dataset_cls(shuffle=False)
+        #add mode: val
+        train_dataset = self.dataset_cls(shuffle=False, mode="valid")
         return self.build_dataloader(train_dataset)
 
     @data_loader
     def test_dataloader(self):
-        train_dataset = self.dataset_cls(shuffle=False)
+        #add mode: test
+        train_dataset = self.dataset_cls(shuffle=False, mode="test")
         return self.build_dataloader(train_dataset, batch_by_size=False)
 
     def build_dataloader(self, dataset, shuffle=False, batch_by_size=True):
@@ -99,6 +102,8 @@ class NowcastTask(BaseTask):
         # TODO lr change from 0.001 to 0.0001
         if hparams['scheduler'] == 'rsqrt':
             return RSQRTSchedule(optimizer)
+        elif hparams['scheduler'] == 'my':
+            return MySchedule(optimizer)
         else:
             return NoneSchedule(optimizer)
 
@@ -118,7 +123,9 @@ class NowcastTask(BaseTask):
     # training
     ######################
     def on_train_start(self):
-        pass
+        self.gen_dir = os.path.join(hparams['work_dir'],
+                                    f'validated_{self.trainer.global_step}_{hparams["gen_dir_name"]}')
+        os.makedirs(self.gen_dir, exist_ok=True)
 
     def on_epoch_start(self):
         self.training_losses_meter = {'total_loss': utils.AvgrageMeter()}
@@ -212,12 +219,16 @@ class NowcastTask(BaseTask):
         if batch_idx <= hparams['num_save_samples']:
             path = os.path.join(res_path, str(batch_idx))
             os.makedirs(path, exist_ok=True)
-            if hparams['case_type'] == 'normal':
-                test_ims_plot = gt[0][:-2, 256-192:256+192, 256-192:256+192]
-                img_gen_plot = output[0][:-2, 256-192:256+192, 256-192:256+192]
+            if hparams['case_type'] == 'normal' and not hparams['if_using_old']:
+                test_ims_plot = gt[0]
+                img_gen_plot = output[0]
+                # test_ims_plot = gt[0][:-2, 256-192:256+192, 256-192:256+192]
+                # img_gen_plot = output[0][:-2, 256-192:256+192, 256-192:256+192]
             else:
-                test_ims_plot = gt[0][:-2]
-                img_gen_plot = output[0][:-2]
+                test_ims_plot = gt[0]
+                img_gen_plot = output[0]
+                # test_ims_plot = gt[0][:-2]
+                # img_gen_plot = output[0][:-2]
             save_plots(test_ims_plot,
                        labels=['gt{}'.format(i + 1) for i in range(hparams['total_length'])],
                        res_path=path, vmin=vis_info['vmin'], vmax=vis_info['vmax'])
